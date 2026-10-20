@@ -400,7 +400,8 @@ en:{
   noteHint:{writing:'Caption angle, tone, Arabic or English, hashtags…',design:'Sizes, style references, text on the visual…',photo:'Shot list, location and time, who to photograph…'},
   bannerOffline:'Couldn’t reach the board’s database. Check your connection, then reload the page.',
   bannerConfig:'This board isn’t connected to its database yet. Add the Supabase key in config.js, then redeploy.',
-  bannerViewOnly:'You’re viewing the board. To add posts, take tasks or upload files, enter the team code.',
+  bannerViewOnly:'Pick your name to take tasks. To add posts, update status or upload files, enter the team code.',
+  spotTaken:'That spot was just taken. Pick another post.', leftTask:'You left this task',
   enterCode:'Enter team code', codeTitle:'Team code', codeBody:'Editing the board needs the team code. The committee head has it, and this device remembers it.',
   codeLabel:'Code', unlock:'Unlock editing', codeChecking:'Checking…', codeWrong:'That code isn’t right. Check it and try again.', codeOk:'Editing unlocked', forgetCode:'Forget the team code on this device',
   bannerPick:'Pick your name so you can claim work and see it under My work.',
@@ -487,7 +488,8 @@ ar:{
   noteHint:{writing:'زاوية النص، النبرة، عربي أو إنجليزي، الوسوم…',design:'المقاسات، مراجع الأسلوب، النص على التصميم…',photo:'قائمة اللقطات، المكان والوقت، من سيتم تصويره…'},
   bannerOffline:'تعذّر الاتصال بقاعدة بيانات اللوحة. يُرجى التحقق من الاتصال ثم إعادة تحميل الصفحة.',
   bannerConfig:'اللوحة غير مربوطة بقاعدة البيانات بعد. يُرجى إضافة مفتاح Supabase في ملف config.js ثم إعادة النشر.',
-  bannerViewOnly:'أنت تتصفح اللوحة. لإضافة منشورات أو استلام مهام أو رفع ملفات، يُرجى إدخال رمز الفريق.',
+  bannerViewOnly:'اختيار الاسم يتيح استلام المهام. ولإضافة منشورات أو تحديث الحالة أو رفع ملفات، يُرجى إدخال رمز الفريق.',
+  spotTaken:'تم شغل هذا المكان للتو. يُرجى اختيار منشور آخر.', leftTask:'تم الانسحاب من المهمة',
   enterCode:'إدخال رمز الفريق', codeTitle:'رمز الفريق', codeBody:'التعديل على اللوحة يتطلب رمز الفريق، وهو متوفر لدى رئيس اللجنة، ويُحفظ على هذا الجهاز.',
   codeLabel:'الرمز', unlock:'تفعيل التعديل', codeChecking:'جارٍ التحقق…', codeWrong:'الرمز غير صحيح. يُرجى التحقق منه والمحاولة مجددًا.', codeOk:'تم تفعيل التعديل', forgetCode:'إزالة رمز الفريق من هذا الجهاز',
   bannerPick:'اختيار الاسم يتيح استلام المهام ومتابعتها في «مهامي».',
@@ -833,20 +835,27 @@ function updatePost(id,patch){
 }
 function updateUnit(id,k,patch){ return updatePost(id,{units:{[k]:patch}}); }
 function take(id,k){
-  const p=S.posts.get(id); if(!p) return;
+  const p=S.posts.get(id); if(!p||!S.backend) return;
   if(!S.me||!S.roster.get(S.me)){ S.after=()=>take(id,k); openWho(); return; }
   const u=p.units[k]; if(u.assignees.includes(S.me)) return;
-  const patch={assignees:[...u.assignees,S.me]};
-  if(u.status==='open') patch.status='progress';
-  updateUnit(id,k,patch);
-  toast(t('toastTake',unitNoun(k),titleOf(p)));
+  const legacy=()=>{ const patch={assignees:[...u.assignees,S.me]}; if(u.status==='open') patch.status='progress'; updateUnit(id,k,patch); };
+  S.backend.takeUnit(id,k,S.me).then(()=>toast(t('toastTake',unitNoun(k),titleOf(p)))).catch(e=>{
+    if(e&&e.code==='missing_fn'&&canWrite()){ legacy(); toast(t('toastTake',unitNoun(k),titleOf(p))); return; }
+    toast(e&&e.code==='full'?t('spotTaken'):t('errSave'));
+  });
 }
 function drop(id,k,rid){
   const p=S.posts.get(id); if(!p) return;
-  const u=p.units[k]; const assignees=u.assignees.filter(a=>a!==rid);
-  const patch={assignees};
-  if(!assignees.length&&u.status==='progress') patch.status='open';
-  updateUnit(id,k,patch);
+  const u=p.units[k];
+  const legacy=()=>{ const assignees=u.assignees.filter(a=>a!==rid); const patch={assignees}; if(!assignees.length&&u.status==='progress') patch.status='open'; updateUnit(id,k,patch); };
+  if(rid===S.me&&S.backend){
+    S.backend.leaveUnit(id,k,rid).then(()=>toast(t('leftTask'))).catch(e=>{
+      if(e&&e.code==='missing_fn'&&canWrite()){ legacy(); return; }
+      toast(t('errSave'));
+    });
+    return;
+  }
+  legacy();
 }
 function assign(id,k,rid){
   const p=S.posts.get(id); if(!p||!rid) return;
@@ -1029,12 +1038,12 @@ function card(p,k,opts){
   return el;
 }
 function cardAction(p,k){
-  if(!canWrite()) return null;
   const u=p.units[k], mine=S.me&&u.assignees.includes(S.me);
   if(!mine){
-    if(spotsLeft(p,k)<=0) return null;
+    if(!S.backend||spotsLeft(p,k)<=0) return null;
     return h('button',{class:'btn small'+(u.assignees.length?'':' primary'),type:'button',onclick:e=>{ e.stopPropagation(); take(p.id,k); }},u.assignees.length?t('join'):t('takeIt'));
   }
+  if(!canWrite()) return null;
   const sel=h('select',{id:`st-${p.id}-${k}`,'aria-label':t('statusFor',unitShort(k)),onclick:e=>e.stopPropagation(),onkeydown:e=>e.stopPropagation(),
       onchange:e=>{ setStatus(p.id,k,e.target.value); e.target.blur(); }},
     STATUS_KEYS.filter(s=>s!=='open').map(s=>h('option',{value:s},statusLabel(s))));
@@ -1304,13 +1313,13 @@ function unitBlock(p,k){
   const row=h('div',{class:'people-row'},
     h('div',{class:'people'},u.assignees.map(rid=>h('span',{class:'person'+(rid===S.me?' me':'')},
       personName(rid)+(rid===S.me?t('you'):''),
-      cw?h('button',{type:'button','aria-label':t('remove',personName(rid)),onclick:()=>drop(p.id,k,rid)},'×'):null)),
+      (cw||(rid===S.me&&S.backend))?h('button',{type:'button','aria-label':t('remove',personName(rid)),onclick:()=>drop(p.id,k,rid)},'×'):null)),
       Array.from({length:Math.min(spotsLeft(p,k),6)},()=>h('span',{class:'person open'},t('openSpot'))),
       spotsLeft(p,k)>6?h('span',{class:'slots'},'+'+(spotsLeft(p,k)-6)):null,
       !u.assignees.length&&!spotsLeft(p,k)?h('span',{class:'muted small'},t('noOne')):null,
       u.slots>1?h('span',{class:'slots',dir:'ltr'},`${u.assignees.length}/${u.slots}`):null));
+  if(!mine&&spotsLeft(p,k)>0&&S.backend) row.append(h('button',{class:'btn small'+(u.assignees.length?'':' primary'),type:'button',onclick:()=>take(p.id,k)},t('takeIt')));
   if(cw){
-    if(!mine&&spotsLeft(p,k)>0) row.append(h('button',{class:'btn small'+(u.assignees.length?'':' primary'),type:'button',onclick:()=>take(p.id,k)},t('takeIt')));
     const avail=[...S.roster.entries()].filter(([id])=>!u.assignees.includes(id));
     if(avail.length){
       const own=avail.filter(([,r])=>r.team===k), others=avail.filter(([,r])=>r.team!==k);
@@ -1536,6 +1545,8 @@ function makeBackend(){
   const sb=window.supabase.createClient(CFG.supabaseUrl,key,{auth:{persistSession:false,autoRefreshToken:false}});
   const mapErr=e=>{
     const c=e&&e.code, m=(e&&e.message)||'';
+    if(/\bfull\b/.test(m)) return {code:'full',message:m};
+    if(c==='PGRST202'||/could not find the function/i.test(m)) return {code:'missing_fn',message:m};
     if(c==='42501'||/bad_code/.test(m)) return {code:'invalid_argument',message:m};
     if(c==='P0002'||c==='22023') return {code:'invalid_argument',message:m};
     return {code:'unavailable',message:m};
@@ -1595,7 +1606,22 @@ function makeBackend(){
     delete:async()=>({deleted:false})
   };
   const rosterAdd=async(name,team)=>{ const id=await rpc('roster_add',{p_name:name,p_team:team}); if(id){ localPut('roster',id,{name,team,uid:null,createdAt:Date.now()}); schedule('roster'); } return id; };
-  return {db,assets,checkCode:c=>rpc('check_board_code',{p_code:c}),rosterAdd};
+  const unitPatch=(postId,k,fn)=>{
+    const cur=(cache.get('posts')||[]).find(r=>r.id===postId); if(!cur) return;
+    const u=(cur.data.units||{})[k]||{}, as=Array.isArray(u.assignees)?u.assignees:[];
+    const nu=fn(u,as); if(nu) localPut('posts',postId,deepMerge(cur.data,{units:{[k]:nu}}));
+  };
+  const takeUnit=async(postId,k,member)=>{
+    unitPatch(postId,k,(u,as)=>as.includes(member)?null:Object.assign({assignees:[...as,member]},(u.status||'open')==='open'?{status:'progress'}:{}));
+    try{ await rpc('unit_take',{p_post:postId,p_unit:k,p_member:member}); }catch(e){ schedule('posts'); throw e; }
+    schedule('posts');
+  };
+  const leaveUnit=async(postId,k,member)=>{
+    unitPatch(postId,k,(u,as)=>{ const left=as.filter(a=>a!==member); return Object.assign({assignees:left},(!left.length&&u.status==='progress')?{status:'open'}:{}); });
+    try{ await rpc('unit_leave',{p_post:postId,p_unit:k,p_member:member}); }catch(e){ schedule('posts'); throw e; }
+    schedule('posts');
+  };
+  return {db,assets,checkCode:c=>rpc('check_board_code',{p_code:c}),rosterAdd,takeUnit,leaveUnit};
 }
 async function boot(){
   const be=makeBackend();
