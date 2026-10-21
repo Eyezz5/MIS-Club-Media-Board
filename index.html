@@ -400,7 +400,8 @@ en:{
   noteHint:{writing:'Caption angle, tone, Arabic or English, hashtags…',design:'Sizes, style references, text on the visual…',photo:'Shot list, location and time, who to photograph…'},
   bannerOffline:'Couldn’t reach the board’s database. Check your connection, then reload the page.',
   bannerConfig:'This board isn’t connected to its database yet. Add the Supabase key in config.js, then redeploy.',
-  bannerViewOnly:'Pick your name to take tasks. To add posts, update status or upload files, enter the team code.',
+  bannerViewOnly:'Pick your name to take tasks, upload your designs and update your own tasks. To add or edit posts, enter the team code.',
+  notAssigned:'Only people on this task can do that.',
   spotTaken:'That spot was just taken. Pick another post.', leftTask:'You left this task',
   enterCode:'Enter team code', codeTitle:'Team code', codeBody:'Editing the board needs the team code. The committee head has it, and this device remembers it.',
   codeLabel:'Code', unlock:'Unlock editing', codeChecking:'Checking…', codeWrong:'That code isn’t right. Check it and try again.', codeOk:'Editing unlocked', forgetCode:'Forget the team code on this device',
@@ -456,7 +457,7 @@ en:{
   finalPost:'Final post', chooseFiles:'Choose files', orDrag:'or drag them here',
   finalHint:'Images, videos or PDFs, up to 50 MB each. Upload them in posting order.',
   uploading:(d,n)=>`Uploading ${d} of ${n}…`, uploadedN:n=>`Uploaded ${n} ${n===1?'file':'files'}`,
-  noFiles:'No files uploaded yet.', noUpload:'Enter the team code to upload files.',
+  noFiles:'No files uploaded yet.', noUpload:'Take a task on this post to upload files.',
   caption:'Caption', captionPh:'The final caption, ready to paste when posting.', noCaption:'No caption yet.',
   copy:'Copy', copied:'Caption copied', copyFail:'Couldn’t copy. The text is selected, so copy it manually.',
   download:'Download', openNew:'Open ↗', downloadFail:'The download didn’t start. Use Open instead.',
@@ -488,7 +489,8 @@ ar:{
   noteHint:{writing:'زاوية النص، النبرة، عربي أو إنجليزي، الوسوم…',design:'المقاسات، مراجع الأسلوب، النص على التصميم…',photo:'قائمة اللقطات، المكان والوقت، من سيتم تصويره…'},
   bannerOffline:'تعذّر الاتصال بقاعدة بيانات اللوحة. يُرجى التحقق من الاتصال ثم إعادة تحميل الصفحة.',
   bannerConfig:'اللوحة غير مربوطة بقاعدة البيانات بعد. يُرجى إضافة مفتاح Supabase في ملف config.js ثم إعادة النشر.',
-  bannerViewOnly:'اختيار الاسم يتيح استلام المهام. ولإضافة منشورات أو تحديث الحالة أو رفع ملفات، يُرجى إدخال رمز الفريق.',
+  bannerViewOnly:'اختيار الاسم يتيح استلام المهام ورفع التصاميم وتحديث حالة المهام المستلمة. ولإضافة المنشورات أو تعديلها، يُرجى إدخال رمز الفريق.',
+  notAssigned:'هذا الإجراء متاح للمكلّفين بالمهمة فقط.',
   spotTaken:'تم شغل هذا المكان للتو. يُرجى اختيار منشور آخر.', leftTask:'تم الانسحاب من المهمة',
   enterCode:'إدخال رمز الفريق', codeTitle:'رمز الفريق', codeBody:'التعديل على اللوحة يتطلب رمز الفريق، وهو متوفر لدى رئيس اللجنة، ويُحفظ على هذا الجهاز.',
   codeLabel:'الرمز', unlock:'تفعيل التعديل', codeChecking:'جارٍ التحقق…', codeWrong:'الرمز غير صحيح. يُرجى التحقق منه والمحاولة مجددًا.', codeOk:'تم تفعيل التعديل', forgetCode:'إزالة رمز الفريق من هذا الجهاز',
@@ -544,7 +546,7 @@ ar:{
   finalPost:'المنشور النهائي', chooseFiles:'اختيار الملفات', orDrag:'أو اسحبها إلى هنا',
   finalHint:'صور أو فيديو أو PDF، حتى 50 ميجابايت للملف. يُرجى رفعها بترتيب النشر.',
   uploading:(d,n)=>`جارٍ الرفع: ${d} من ${n}…`, uploadedN:n=>`تم رفع الملفات: ${n}`,
-  noFiles:'لم تُرفع أي ملفات بعد.', noUpload:'يُرجى إدخال رمز الفريق لرفع الملفات.',
+  noFiles:'لم تُرفع أي ملفات بعد.', noUpload:'يمكن رفع الملفات بعد استلام مهمة في هذا المنشور.',
   caption:'الكابشن', captionPh:'الكابشن النهائي، جاهز للنسخ عند النشر.', noCaption:'لا يوجد كابشن بعد.',
   copy:'نسخ', copied:'تم نسخ الكابشن', copyFail:'تعذّر النسخ. النص محدّد، يُرجى نسخه يدويًا.',
   download:'تنزيل', openNew:'فتح ↗', downloadFail:'لم يبدأ التنزيل. يُرجى استخدام «فتح».',
@@ -712,6 +714,8 @@ const ACCEPT_ATTR=Object.keys(EXT_OF).join(',')+',.png,.jpg,.jpeg,.webp,.gif,.mp
 const MAX_BYTES=50*1024*1024;
 const CFG=window.BOARD_CONFIG||{};
 const BUCKET=CFG.bucket||'board-files';
+const onPost=(p,unit)=>!!(S.me&&p&&(unit?[unit]:UNIT_KEYS).some(k=>p.units[k]&&p.units[k].needed&&p.units[k].assignees.includes(S.me)));
+const canUploadTo=p=>!!S.assets&&(canWrite()||onPost(p));
 const blobUrl=id=>`${String(CFG.supabaseUrl||'').replace(/\/+$/,'')}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(id)}`;
 const kindOf=type=>String(type).startsWith('image/')?'image':String(type).startsWith('video/')?'video':'doc';
 function fileTypeOf(f){
@@ -766,7 +770,8 @@ async function uploadFiles(pid,list){
       const r=await S.assets.upload(f,{type});
       const data={postId:pid,name:String(f.name||'file').slice(0,180),type:r.contentType||type,size:r.sizeBytes||f.size,by:S.me||null,at:Date.now(),order:base+i};
       S.files.set(r.id,normFile(r.id,data)); reindex();
-      await enqueue('files/'+r.id,()=>S.db.collection('files').doc(r.id).set(data));
+      if(canWrite()) await enqueue('files/'+r.id,()=>S.db.collection('files').doc(r.id).set(data));
+      else await S.backend.fileAdd(S.me,pid,r.id,data);
       okN++;
     }catch(e){
       const c=e&&e.code;
@@ -786,17 +791,23 @@ async function removeFile(fid){
   S.files.delete(fid); tileCache.delete(fid); reindex(); renderAll(); renderDrawer();
   try{ await S.assets.delete(fid); }
   catch(e){ S.files.set(fid,f); reindex(); renderAll(); renderDrawer(); toast(t('errSave')); return; }
-  enqueue('files/'+fid,()=>S.db.doc('files/'+fid).delete());
+  if(canWrite()) enqueue('files/'+fid,()=>S.db.doc('files/'+fid).delete());
+  else S.backend.fileRemove(S.me,fid).catch(e=>toast(e&&e.code==='not_assigned'?t('notAssigned'):t('errSave')));
 }
 function moveFile(pid,fid,dir){
-  if(!canWrite()) return;
+  if(!canWrite()&&!onPost(S.posts.get(pid))) return;
   const list=filesFor(pid), i=list.findIndex(f=>f.id===fid), j=i+dir;
   if(i<0||j<0||j>=list.length) return;
   const a=list[i], b=list[j];
   let oa=a.order, ob=b.order; if(oa===ob) ob=oa+dir;
   a.order=ob; b.order=oa; reindex(); renderAll(); renderDrawer();
-  enqueue('files/'+a.id,()=>S.db.doc('files/'+a.id).update({order:ob}));
-  enqueue('files/'+b.id,()=>S.db.doc('files/'+b.id).update({order:oa}));
+  if(canWrite()){
+    enqueue('files/'+a.id,()=>S.db.doc('files/'+a.id).update({order:ob}));
+    enqueue('files/'+b.id,()=>S.db.doc('files/'+b.id).update({order:oa}));
+  }else{
+    const fail=e=>toast(e&&e.code==='not_assigned'?t('notAssigned'):t('errSave'));
+    S.backend.fileReorder(S.me,a.id,ob).then(()=>S.backend.fileReorder(S.me,b.id,oa)).catch(fail);
+  }
 }
 function downloadName(f){
   const ext=EXT_OF[f.type]||'png';
@@ -866,7 +877,12 @@ function assign(id,k,rid){
 }
 function setStatus(id,k,status){
   const p=S.posts.get(id); if(!p||p.units[k].status===status) return;
-  updateUnit(id,k,{status});
+  if(canWrite()){ updateUnit(id,k,{status}); return; }
+  if(onPost(p,k)&&S.backend) S.backend.unitStatus(S.me,id,k,status).catch(e=>toast(e&&e.code==='not_assigned'?t('notAssigned'):t('errSave')));
+}
+function setCaption(id,val){
+  if(canWrite()){ updatePost(id,{caption:val}); return; }
+  if(S.backend) S.backend.captionSet(S.me,id,val).catch(e=>toast(e&&e.code==='not_assigned'?t('notAssigned'):t('errSave')));
 }
 function togglePlatform(id,name){
   const p=S.posts.get(id); if(!p) return;
@@ -1043,7 +1059,6 @@ function cardAction(p,k){
     if(!S.backend||spotsLeft(p,k)<=0) return null;
     return h('button',{class:'btn small'+(u.assignees.length?'':' primary'),type:'button',onclick:e=>{ e.stopPropagation(); take(p.id,k); }},u.assignees.length?t('join'):t('takeIt'));
   }
-  if(!canWrite()) return null;
   const sel=h('select',{id:`st-${p.id}-${k}`,'aria-label':t('statusFor',unitShort(k)),onclick:e=>e.stopPropagation(),onkeydown:e=>e.stopPropagation(),
       onchange:e=>{ setStatus(p.id,k,e.target.value); e.target.blur(); }},
     STATUS_KEYS.filter(s=>s!=='open').map(s=>h('option',{value:s},statusLabel(s))));
@@ -1212,6 +1227,7 @@ function cleanupFiles(pid){
 }
 function finalSection(p){
   const cw=canWrite(), files=filesFor(p.id), rtl=S.lang==='ar';
+  const canUp=canUploadTo(p), canArrange=cw||onPost(p), canCap=cw||onPost(p,'writing');
   const up=S.uploading&&S.uploading.pid===p.id;
   const box=h('div',{class:'final'});
   if(files.length){
@@ -1226,17 +1242,17 @@ function finalSection(p){
           h('button',{class:'icon-btn',type:'button',onclick:()=>{ S.confirmFile=null; renderDrawer(); }},t('cancel'))));
       }else{
         kids.push(h('div',{class:'tile-tools'},
-          cw&&files.length>1?h('span',{class:'grp'},
+          canArrange&&files.length>1?h('span',{class:'grp'},
             h('button',{class:'icon-btn',type:'button','aria-label':t('moveEarlier'),title:t('moveEarlier'),disabled:i===0,onclick:()=>moveFile(p.id,f.id,-1)},rtl?'→':'←'),
             h('button',{class:'icon-btn',type:'button','aria-label':t('moveLater'),title:t('moveLater'),disabled:i===files.length-1,onclick:()=>moveFile(p.id,f.id,1)},rtl?'←':'→')):h('span'),
-          S.canUpload?h('button',{class:'icon-btn','aria-label':t('remove',f.name),title:t('remove',f.name),type:'button',onclick:()=>{ S.confirmFile=f.id; renderDrawer(); }},'×'):null));
+          (cw||(canUp&&f.by&&f.by===S.me))?h('button',{class:'icon-btn','aria-label':t('remove',f.name),title:t('remove',f.name),type:'button',onclick:()=>{ S.confirmFile=f.id; renderDrawer(); }},'×'):null));
       }
       return h('div',{class:'tile'},kids);
     })));
-  }else if(!S.canUpload){
+  }else if(!canUp){
     box.append(h('p',{class:'muted small'},t('noFiles')));
   }
-  if(S.canUpload){
+  if(canUp){
     const input=h('input',{type:'file',id:'up-'+p.id,multiple:true,accept:ACCEPT_ATTR,disabled:!!S.uploading,
       onchange:e=>{ const fl=[...e.target.files]; e.target.value=''; e.target.blur(); uploadFiles(p.id,fl); }});
     const drop=h('label',{class:'drop'+(up?' busy':''),for:'up-'+p.id},input,
@@ -1252,9 +1268,9 @@ function finalSection(p){
   }
   if(S.uploadErrs&&S.uploadErrs.pid===p.id) box.append(h('ul',{class:'errs',role:'alert'},S.uploadErrs.list.map(m=>h('li',{dir:'auto'},m))));
   let ta=null;
-  if(cw) ta=h('textarea',{id:'post-caption',rows:'4',dir:'auto',value:p.caption,placeholder:t('captionPh'),onchange:e=>updatePost(p.id,{caption:e.target.value})});
+  if(canCap) ta=h('textarea',{id:'post-caption',rows:'4',dir:'auto',value:p.caption,placeholder:t('captionPh'),onchange:e=>setCaption(p.id,e.target.value)});
   box.append(h('div',{class:'field'},
-    h('div',{class:'cap-row'},h('label',{class:'flabel',for:cw?'post-caption':null},t('caption')),
+    h('div',{class:'cap-row'},h('label',{class:'flabel',for:canCap?'post-caption':null},t('caption')),
       p.caption?h('button',{class:'btn small',type:'button',onclick:()=>copyCaption(ta?ta.value:p.caption,ta)},t('copy')):null),
     ta||(p.caption?h('p',{class:'prose',dir:'auto'},p.caption):h('p',{class:'muted small'},t('noCaption')))));
   return h('section',{class:'d-sec'},h('h3',null,t('finalPost')),box);
@@ -1307,7 +1323,7 @@ function unitBlock(p,k){
     if(cw) block.append(h('button',{class:'btn small',type:'button',onclick:()=>updateUnit(p.id,k,{needed:true})},t('request',unitNoun(k))));
     return block;
   }
-  if(cw) block.append(h('div',{class:'seg',role:'group','aria-label':t('statusFor',unitLabel(k))},
+  if(cw||(S.me&&u.assignees.includes(S.me))) block.append(h('div',{class:'seg',role:'group','aria-label':t('statusFor',unitLabel(k))},
     STATUS_KEYS.map(s=>h('button',{type:'button','aria-pressed':String(u.status===s),onclick:()=>setStatus(p.id,k,s)},statusLabel(s)))));
   const mine=S.me&&u.assignees.includes(S.me);
   const row=h('div',{class:'people-row'},
@@ -1545,6 +1561,7 @@ function makeBackend(){
   const sb=window.supabase.createClient(CFG.supabaseUrl,key,{auth:{persistSession:false,autoRefreshToken:false}});
   const mapErr=e=>{
     const c=e&&e.code, m=(e&&e.message)||'';
+    if(/not_assigned/.test(m)) return {code:'not_assigned',message:m};
     if(/\bfull\b/.test(m)) return {code:'full',message:m};
     if(c==='PGRST202'||/could not find the function/i.test(m)) return {code:'missing_fn',message:m};
     if(c==='42501'||/bad_code/.test(m)) return {code:'invalid_argument',message:m};
@@ -1621,7 +1638,17 @@ function makeBackend(){
     try{ await rpc('unit_leave',{p_post:postId,p_unit:k,p_member:member}); }catch(e){ schedule('posts'); throw e; }
     schedule('posts');
   };
-  return {db,assets,checkCode:c=>rpc('check_board_code',{p_code:c}),rosterAdd,takeUnit,leaveUnit};
+  const call=async(fn,args,col)=>{ try{ await rpc(fn,args); }catch(e){ schedule(col); throw e; } schedule(col); };
+  const postPatch=(postId,patch)=>{ const cur=(cache.get('posts')||[]).find(r=>r.id===postId); if(cur) localPut('posts',postId,deepMerge(cur.data,patch)); };
+  const fileAdd=async(member,post,id,d)=>{ localPut('files',id,d);
+    await call('file_add',{p_member:member,p_post:post,p_file:id,p_name:d.name,p_type:d.type,p_size:d.size,p_order:d.order},'files'); };
+  const fileRemove=async(member,id)=>{ localPut('files',id,null); await call('file_remove',{p_member:member,p_file:id},'files'); };
+  const fileReorder=async(member,id,order)=>{ const cur=(cache.get('files')||[]).find(r=>r.id===id);
+    if(cur) localPut('files',id,Object.assign({},cur.data,{order})); await call('file_reorder',{p_member:member,p_file:id,p_order:order},'files'); };
+  const captionSet=async(member,post,caption)=>{ postPatch(post,{caption}); await call('caption_set',{p_member:member,p_post:post,p_caption:caption},'posts'); };
+  const unitStatus=async(member,post,unit,status)=>{ postPatch(post,{units:{[unit]:{status}}});
+    await call('unit_status',{p_member:member,p_post:post,p_unit:unit,p_status:status},'posts'); };
+  return {db,assets,checkCode:c=>rpc('check_board_code',{p_code:c}),rosterAdd,takeUnit,leaveUnit,fileAdd,fileRemove,fileReorder,captionSet,unitStatus};
 }
 async function boot(){
   const be=makeBackend();
